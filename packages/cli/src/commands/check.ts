@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { resolve, dirname, join } from 'node:path';
 import pc from 'picocolors';
 import {
   loadComponents,
@@ -15,6 +15,8 @@ import { validateComponentManifest, validateArchDecisionDocument } from '../sche
 import { renderTable } from '../output/table.js';
 import { renderSarif } from '../output/sarif.js';
 import { makeFinding } from '../finding-builder.js';
+import { analyzeDependencies } from '../agents/dependency-analyzer.js';
+import { detectPatterns } from '../agents/pattern-detector.js';
 
 export interface CheckOptions {
   path: string;
@@ -37,35 +39,32 @@ export interface CheckOptions {
  */
 export async function runCheck(opts: CheckOptions): Promise<number> {
   const rootDir = resolve(opts.path);
-  const decisionsDir = resolve(opts.decisions ?? `${rootDir}/decisions`);
   const format = opts.format ?? 'table';
 
   const config: FolioConfig = {
     ...DEFAULT_CONFIG,
     confidence_threshold: opts.confidenceThreshold ?? DEFAULT_CONFIG.confidence_threshold,
-    normalization_threshold: opts.normalizationThreshold ?? DEFAULT_CONFIG.normalization_threshold,
+    normalization_threshold:
+      opts.normalizationThreshold ?? DEFAULT_CONFIG.normalization_threshold,
     expiry_warn_days: opts.expiryWarnDays ?? DEFAULT_CONFIG.expiry_warn_days,
     output_format: format,
-    decisions_path: decisionsDir,
+    decisions_path: opts.decisions ?? DEFAULT_CONFIG.decisions_path,
   };
 
   if (!opts.quiet && format === 'table') {
     console.log(pc.bold('\nFolio — Architectural Intent Analysis'));
     console.log(pc.dim(`Target: ${rootDir}`));
-    console.log(pc.dim(`Decisions: ${decisionsDir}`));
     console.log('');
   }
 
-  // ── 1. Load documents ─────────────────────────────────────────────────────
-  let components;
+  // ── 1. Load component manifests ───────────────────────────────────────────
+  let components: ComponentManifest[];
   try {
     components = loadComponents(rootDir);
   } catch (err) {
     console.error(pc.red(`Failed to load component manifests: ${String(err)}`));
     return 2;
   }
-
-  const adrs = loadArchDecisions(decisionsDir);
 
   if (components.length === 0) {
     if (!opts.quiet) {
@@ -77,7 +76,33 @@ export async function runCheck(opts: CheckOptions): Promise<number> {
     return 2;
   }
 
-  // ── 2. Schema validation (blocks further analysis on errors) ─────────────
+  // ── 2. Load ADRs: per-component decisions/ + optional global override ─────
+  //
+  // Each component's ADRs live in <component-dir>/decisions/.
+  // The --decisions flag (if given) provides an additional directory whose
+  // ADRs are merged in last and win on name collision.
+  const adrMap = new Map<string, ArchDecision>();
+
+  for (const component of components) {
+    const componentDir = dirname(resolve(component._filePath ?? 'folio.yaml'));
+    const localDecisionsDir = join(componentDir, 'decisions');
+    const localAdrs = loadArchDecisions(localDecisionsDir);
+    for (const adr of localAdrs) {
+      adrMap.set(adr.metadata.name, adr);
+    }
+  }
+
+  // Global override: --decisions flag wins over component-local on collision
+  if (opts.decisions) {
+    const globalAdrs = loadArchDecisions(resolve(opts.decisions));
+    for (const adr of globalAdrs) {
+      adrMap.set(adr.metadata.name, adr);
+    }
+  }
+
+  const adrs = [...adrMap.values()];
+
+  // ── 3. Schema validation (blocks further analysis on errors) ─────────────
   const schemaFindings: Finding[] = [];
 
   for (const c of components) {
@@ -99,27 +124,23 @@ export async function runCheck(opts: CheckOptions): Promise<number> {
     return 2;
   }
 
-  // ── 3. Constraint analysis (dependency, pattern rules) ───────────────────
-  // The constraint analysis agents are called here. For this implementation,
-  // findings are sourced from the violation tolerances declared in the manifests
-  // to demonstrate classification. A full implementation would also scan source
-  // files for actual constraint violations.
-  const constraintFindings: Finding[] = generateConstraintFindings(components);
+  // ── 4. Source scanning: dependency + pattern agents ───────────────────────
+  const sourceFindings: Finding[] = [];
+  for (const component of components) {
+    sourceFindings.push(...analyzeDependencies(component));
+    sourceFindings.push(...detectPatterns(component));
+  }
 
-  // ── 4. Decision log analysis ──────────────────────────────────────────────
+  // ── 5. Decision log analysis ──────────────────────────────────────────────
   const decisionFindings: Finding[] = generateDecisionLogFindings(
     components,
     adrs,
     config.expiry_warn_days,
   );
 
-  const allFindings: Finding[] = [
-    ...schemaFindings,
-    ...constraintFindings,
-    ...decisionFindings,
-  ];
+  const allFindings: Finding[] = [...schemaFindings, ...sourceFindings, ...decisionFindings];
 
-  // ── 5. Intent resolution and classification ───────────────────────────────
+  // ── 6. Intent resolution and classification ───────────────────────────────
   const report = intentResolve({
     findings: allFindings,
     components,
@@ -127,7 +148,7 @@ export async function runCheck(opts: CheckOptions): Promise<number> {
     config,
   });
 
-  // ── 6. Output ─────────────────────────────────────────────────────────────
+  // ── 7. Output ─────────────────────────────────────────────────────────────
   if (format === 'json') {
     console.log(JSON.stringify(report, null, 2));
   } else if (format === 'sarif') {
@@ -140,56 +161,9 @@ export async function runCheck(opts: CheckOptions): Promise<number> {
 }
 
 /**
- * Generates findings for all violation tolerances declared in component
- * manifests. Each tactical/strategic tolerance implies the underlying
- * constraint is being violated.
- *
- * A full implementation would scan source files to detect actual violations
- * and only emit findings where code evidence exists.
- */
-function generateConstraintFindings(
-  components: ComponentManifest[],
-): Finding[] {
-  const findings: Finding[] = [];
-
-  for (const component of components) {
-    const tolerances = component.spec.violations ?? {};
-
-    for (const t of tolerances.tactical ?? []) {
-      findings.push(makeFinding({
-        agent: 'dependency-analyzer',
-        component: component.metadata.name,
-        constraint: t.constraint,
-        file: component._filePath,
-        violation_type: 'constraint-violation',
-        message: `Constraint '${t.constraint}' violated — covered by tactical tolerance '${t.id}'`,
-        evidence: `Tolerance declared in ${component._filePath ?? 'folio.yaml'}`,
-        confidence: 1.0,
-      }));
-    }
-
-    for (const s of tolerances.strategic ?? []) {
-      findings.push(makeFinding({
-        agent: 'dependency-analyzer',
-        component: component.metadata.name,
-        constraint: s.constraint,
-        file: component._filePath,
-        violation_type: 'constraint-violation',
-        message: `Constraint '${s.constraint}' violated — covered by strategic tolerance '${s.id}'`,
-        evidence: `Tolerance declared in ${component._filePath ?? 'folio.yaml'}`,
-        confidence: 1.0,
-      }));
-    }
-  }
-
-  return findings;
-}
-
-/**
  * Generates findings from the DecisionLogAnalyzer:
- * - Expired ADRs referenced by tolerances
- * - Revoked/superseded ADRs
- * - Expiry warnings
+ * - Expired / revoked / superseded ADRs referenced by tolerances
+ * - Expiry warnings for soon-to-expire ADRs
  * - Missing ADR references
  */
 function generateDecisionLogFindings(
@@ -198,7 +172,7 @@ function generateDecisionLogFindings(
   expiryWarnDays: number,
 ): Finding[] {
   const findings: Finding[] = [];
-  const adrMap = new Map(adrs.map((a) => [a.metadata.name, a]));
+  const adrIndex = new Map(adrs.map((a) => [a.metadata.name, a]));
   const now = new Date();
 
   applyExpiryTransitions(adrs, now, expiryWarnDays);
@@ -207,77 +181,84 @@ function generateDecisionLogFindings(
     const tolerances = component.spec.violations?.tactical ?? [];
 
     for (const t of tolerances) {
-      const adr = adrMap.get(t.adr);
+      const adr = adrIndex.get(t.adr);
 
       if (!adr) {
-        findings.push(makeFinding({
-          agent: 'decision-log-analyzer',
-          component: component.metadata.name,
-          constraint: t.constraint,
-          file: component._filePath,
-          violation_type: 'tolerance-reference-error',
-          message: `Tactical tolerance '${t.id}' references ADR '${t.adr}' which does not exist`,
-          evidence: `adr: ${t.adr}`,
-          confidence: 1.0,
-        }));
+        findings.push(
+          makeFinding({
+            agent: 'decision-log-analyzer',
+            component: component.metadata.name,
+            constraint: t.constraint,
+            file: component._filePath,
+            violation_type: 'tolerance-reference-error',
+            message: `Tactical tolerance '${t.id}' references ADR '${t.adr}' which does not exist`,
+            evidence: `adr: ${t.adr}`,
+            confidence: 1.0,
+          }),
+        );
         continue;
       }
 
       const effectiveStatus = adr._effectiveStatus ?? adr.spec.status;
 
       if (effectiveStatus === 'expired') {
-        findings.push(makeFinding({
-          agent: 'decision-log-analyzer',
-          component: component.metadata.name,
-          constraint: t.constraint,
-          file: adr._filePath,
-          violation_type: 'adr-expired',
-          message: `ADR '${t.adr}' expired on ${adr.spec.expires}. Tactical tolerance '${t.id}' is no longer valid.`,
-          evidence: `expires: ${adr.spec.expires}`,
-          confidence: 1.0,
-          raw_data: { expires: adr.spec.expires },
-        }));
-      } else if (effectiveStatus === 'revoked') {
-        findings.push(makeFinding({
-          agent: 'decision-log-analyzer',
-          component: component.metadata.name,
-          constraint: t.constraint,
-          file: adr._filePath,
-          violation_type: 'adr-revoked',
-          message: `ADR '${t.adr}' was revoked: ${adr.spec.revoked_reason ?? 'no reason given'}`,
-          evidence: `status: revoked`,
-          confidence: 1.0,
-        }));
-      } else if (effectiveStatus === 'superseded') {
-        findings.push(makeFinding({
-          agent: 'decision-log-analyzer',
-          component: component.metadata.name,
-          constraint: t.constraint,
-          file: adr._filePath,
-          violation_type: 'adr-superseded',
-          message: `ADR '${t.adr}' was superseded by '${adr.spec.superseded_by}'`,
-          evidence: `superseded_by: ${adr.spec.superseded_by}`,
-          confidence: 1.0,
-        }));
-      } else if (effectiveStatus === 'active') {
-        // Check for upcoming expiry
-        const expiryDate = new Date(adr.spec.expires);
-        const msPerDay = 1000 * 60 * 60 * 24;
-        const daysLeft = Math.ceil(
-          (expiryDate.getTime() - now.getTime()) / msPerDay,
-        );
-        if (daysLeft >= 0 && daysLeft <= expiryWarnDays) {
-          findings.push(makeFinding({
+        findings.push(
+          makeFinding({
             agent: 'decision-log-analyzer',
             component: component.metadata.name,
             constraint: t.constraint,
             file: adr._filePath,
-            violation_type: 'expiry-warning',
-            message: `ADR '${t.adr}' expires in ${daysLeft} day(s) on ${adr.spec.expires}. Owner: ${adr.spec.owner}`,
+            violation_type: 'adr-expired',
+            message: `ADR '${t.adr}' expired on ${adr.spec.expires}. Tactical tolerance '${t.id}' is no longer valid.`,
             evidence: `expires: ${adr.spec.expires}`,
             confidence: 1.0,
-            raw_data: { days_until_expiry: daysLeft, expires: adr.spec.expires },
-          }));
+            raw_data: { expires: adr.spec.expires },
+          }),
+        );
+      } else if (effectiveStatus === 'revoked') {
+        findings.push(
+          makeFinding({
+            agent: 'decision-log-analyzer',
+            component: component.metadata.name,
+            constraint: t.constraint,
+            file: adr._filePath,
+            violation_type: 'adr-revoked',
+            message: `ADR '${t.adr}' was revoked: ${adr.spec.revoked_reason ?? 'no reason given'}`,
+            evidence: `status: revoked`,
+            confidence: 1.0,
+          }),
+        );
+      } else if (effectiveStatus === 'superseded') {
+        findings.push(
+          makeFinding({
+            agent: 'decision-log-analyzer',
+            component: component.metadata.name,
+            constraint: t.constraint,
+            file: adr._filePath,
+            violation_type: 'adr-superseded',
+            message: `ADR '${t.adr}' was superseded by '${adr.spec.superseded_by}'`,
+            evidence: `superseded_by: ${adr.spec.superseded_by}`,
+            confidence: 1.0,
+          }),
+        );
+      } else if (effectiveStatus === 'active') {
+        const expiryDate = new Date(adr.spec.expires);
+        const msPerDay = 1000 * 60 * 60 * 24;
+        const daysLeft = Math.ceil((expiryDate.getTime() - now.getTime()) / msPerDay);
+        if (daysLeft >= 0 && daysLeft <= expiryWarnDays) {
+          findings.push(
+            makeFinding({
+              agent: 'decision-log-analyzer',
+              component: component.metadata.name,
+              constraint: t.constraint,
+              file: adr._filePath,
+              violation_type: 'expiry-warning',
+              message: `ADR '${t.adr}' expires in ${daysLeft} day(s) on ${adr.spec.expires}. Owner: ${adr.spec.owner}`,
+              evidence: `expires: ${adr.spec.expires}`,
+              confidence: 1.0,
+              raw_data: { days_until_expiry: daysLeft, expires: adr.spec.expires },
+            }),
+          );
         }
       }
     }
