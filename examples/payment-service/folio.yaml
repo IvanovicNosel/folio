@@ -1,0 +1,56 @@
+kind: Component
+apiVersion: folio/v1alpha1
+metadata:
+  name: payment-service
+  owner: payments-team
+  tags:
+    - payments
+    - pci-scope
+  description: "Handles payment processing, authorisation, and refund workflows"
+
+spec:
+  type: service
+  language: typescript
+  path: ./src
+
+  constraints:
+    - id: no-direct-db
+      description: "This service MUST NOT import database drivers directly"
+      rule:
+        type: dependency
+        deny:
+          - pg
+          - mysql2
+          - sequelize
+          - typeorm
+      severity: strategic
+      rationale: "All data access must flow through @company/db-client to ensure connection pooling, audit logging, and query observability"
+
+    - id: no-console-log
+      description: "Source files MUST NOT contain console.log statements"
+      rule:
+        type: pattern
+        must_not_match:
+          - pattern: "console\\.log"
+            message: "Use the structured logger from @company/logger"
+      severity: tactical
+
+    - id: domain-boundary
+      description: "The domain layer MUST NOT import from the infrastructure layer"
+      rule:
+        type: module
+        deny_imports_from:
+          - "../infrastructure"
+          - "../../infrastructure"
+      severity: strategic
+      rationale: "Domain logic must remain independent of infrastructure concerns to preserve testability and portability"
+
+  violations:
+    tactical:
+      - id: v-001
+        constraint: no-direct-db
+        adr: ADR-042
+        expires: "2027-01-01"
+        owner: jane.doe@example.com
+        reason: "Repository pattern migration in progress. Direct DB access is temporary and scoped to the legacy payment processor module only."
+        max_age_days: 180

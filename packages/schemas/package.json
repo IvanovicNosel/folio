@@ -1,0 +1,14 @@
+{
+  "name": "@folio/schemas",
+  "version": "0.1.0",
+  "description": "Folio normative JSON Schemas for Component and ArchDecision documents",
+  "author": "Ivanovic Nosel",
+  "license": "CC-BY-4.0",
+  "exports": {
+    "./component": "./component.schema.json",
+    "./archdecision": "./archdecision.schema.json"
+  },
+  "files": [
+    "*.schema.json"
+  ]
+}

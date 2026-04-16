@@ -1,0 +1,70 @@
+name: Folio — Architectural Intent Analysis
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  folio:
+    name: Architectural Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # Required for uploading SARIF results to GitHub Code Scanning
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Folio
+        run: pnpm add -g @folio/cli
+
+      # ── Schema validation (fast, fails early) ──────────────────────────────
+      - name: Validate Folio documents
+        run: folio validate .
+        # Exit code 2 = schema errors — always blocks
+
+      # ── Full analysis — SARIF output for Code Scanning ────────────────────
+      - name: Run architectural analysis
+        id: folio_check
+        run: |
+          folio check . \
+            --format sarif \
+            --decisions ./decisions \
+            > folio-results.sarif
+        # Exit code 1 = strategic violations (blocking)
+        # Exit code 2 = config/schema error
+        continue-on-error: true
+
+      # ── Upload SARIF to GitHub Code Scanning ──────────────────────────────
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: folio-results.sarif
+          category: folio-architectural-analysis
+
+      # ── Human-readable summary on PR ──────────────────────────────────────
+      - name: Print analysis summary
+        if: always()
+        run: folio check . --format table --decisions ./decisions || true
+
+      # ── Fail the job if blocking violations were found ────────────────────
+      - name: Assert no blocking violations
+        if: steps.folio_check.outcome == 'failure'
+        run: |
+          echo "::error::Folio found blocking architectural violations."
+          echo "::error::Review the findings above and either resolve the violations or document them as tactical tolerances with a valid ArchDecision."
+          exit 1

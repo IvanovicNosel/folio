@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "folio/v1alpha1/archdecision",
+  "title": "Folio ArchDecision",
+  "description": "A machine-readable architectural decision record with expiry semantics, scoped to a component and its constraints.",
+  "type": "object",
+  "required": ["kind", "apiVersion", "metadata", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "const": "ArchDecision"
+    },
+    "apiVersion": {
+      "const": "folio/v1alpha1"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "created"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Z]+-[0-9]+$",
+          "description": "ADR identifier, e.g. ADR-042"
+        },
+        "created": {
+          "type": "string",
+          "format": "date"
+        },
+        "updated": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["title", "status", "component", "constraints", "decision", "rationale", "expires", "owner", "approver"],
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "active", "expired", "superseded", "revoked"]
+        },
+        "component": {
+          "type": "string",
+          "minLength": 1
+        },
+        "constraints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "decision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "consequences": {
+          "type": "string"
+        },
+        "expires": {
+          "type": "string",
+          "format": "date"
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "approver": {
+          "type": "string",
+          "minLength": 1
+        },
+        "superseded_by": {
+          "type": "string"
+        },
+        "revoked_reason": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "links": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "if": {
+        "properties": { "status": { "const": "superseded" } }
+      },
+      "then": {
+        "required": ["superseded_by"]
+      },
+      "else": {
+        "if": {
+          "properties": { "status": { "const": "revoked" } }
+        },
+        "then": {
+          "required": ["revoked_reason"]
+        }
+      }
+    }
+  }
+}
