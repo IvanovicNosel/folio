@@ -1,0 +1,32 @@
+kind: Component
+apiVersion: folio/v1alpha1
+metadata:
+  name: nano-todo
+  owner: indie-dev
+  description: "Tiny todo API — single file, no architecture"
+
+spec:
+  type: service
+  language: typescript
+  path: ./src
+
+  constraints:
+    - id: no-direct-db
+      description: "Services MUST NOT use database drivers directly"
+      rule:
+        type: dependency
+        deny:
+          - pg
+          - mysql2
+          - sqlite3
+          - better-sqlite3
+      severity: strategic
+
+    - id: no-console-log
+      description: "Production source files MUST NOT contain console.log"
+      rule:
+        type: pattern
+        must_not_match:
+          - pattern: "console\\.log"
+            message: "Use a structured logger"
+      severity: tactical

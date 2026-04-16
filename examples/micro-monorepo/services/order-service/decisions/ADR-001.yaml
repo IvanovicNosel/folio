@@ -1,0 +1,36 @@
+kind: ArchDecision
+apiVersion: folio/v1alpha1
+metadata:
+  name: ADR-001
+  created: "2026-01-15"
+
+spec:
+  title: "Temporary Direct pg Usage in order-service Domain Layer"
+  status: active
+
+  component: order-service
+  constraints:
+    - no-direct-db
+
+  decision: >
+    The order-service domain layer is granted a temporary exception allowing
+    direct use of pg.Pool in src/domain/order.ts while the team migrates to
+    the shared infra/db.ts abstraction.
+
+  rationale: >
+    order.ts was written before the shared DB abstraction existed. The domain
+    logic is tightly coupled to raw query results. Migrating requires a
+    non-trivial refactor of the result mapping layer. The team has committed
+    to completing this before the platform-wide DB abstraction deadline.
+
+  consequences: >
+    MUST be migrated to infra/db.ts before 2026-09-01. No new domain files
+    may import pg. The exception is strictly scoped to order.ts.
+
+  expires: "2026-09-01"
+  owner: orders-dev@example.com
+  approver: platform-lead@example.com
+
+  tags:
+    - migration
+    - database

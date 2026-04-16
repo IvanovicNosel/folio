@@ -1,0 +1,40 @@
+kind: Component
+apiVersion: folio/v1alpha1
+metadata:
+  name: order-service
+  owner: orders-team
+  description: "Order lifecycle management — creation, tracking, and cancellation"
+
+spec:
+  type: service
+  language: typescript
+  path: ./src
+
+  constraints:
+    - id: no-direct-db
+      description: "Only infra/db.ts may use pg. Domain and API layers MUST go through the shared abstraction."
+      rule:
+        type: dependency
+        deny:
+          - pg
+          - mysql2
+      severity: strategic
+
+    - id: no-console-log
+      description: "Source files MUST NOT use console.log"
+      rule:
+        type: pattern
+        must_not_match:
+          - pattern: "console\\.log"
+            message: "Use the platform logger"
+      severity: tactical
+
+  violations:
+    tactical:
+      - id: v-001
+        constraint: no-direct-db
+        adr: ADR-001
+        expires: "2026-09-01"
+        owner: orders-dev@example.com
+        reason: "order.ts predates the shared DB abstraction — migration in ADR-001"
+        max_age_days: 180

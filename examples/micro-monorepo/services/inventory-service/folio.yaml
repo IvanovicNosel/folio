@@ -1,0 +1,35 @@
+kind: Component
+apiVersion: folio/v1alpha1
+metadata:
+  name: inventory-service
+  owner: inventory-team
+  description: "Stock levels, reservations, and release management"
+
+spec:
+  type: service
+  language: typescript
+  path: ./src
+
+  constraints:
+    - id: no-direct-db
+      description: "Only infra/db.ts may use pg. Domain and API layers MUST go through the shared abstraction."
+      rule:
+        type: dependency
+        deny:
+          - pg
+          - mysql2
+      severity: strategic
+
+    - id: no-console-log
+      description: "Source files MUST NOT use console.log"
+      rule:
+        type: pattern
+        must_not_match:
+          - pattern: "console\\.log"
+            message: "Use the platform logger"
+      severity: tactical
+
+  # No violations declared.
+  # stock.ts imports pg directly — this will be BLOCKING.
+  # Combined with order-service's undocumented pattern, the
+  # Normalization Signal will fire once source scanning is in place.

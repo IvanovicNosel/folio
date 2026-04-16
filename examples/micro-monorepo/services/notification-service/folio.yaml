@@ -1,0 +1,35 @@
+kind: Component
+apiVersion: folio/v1alpha1
+metadata:
+  name: notification-service
+  owner: platform-team
+  description: "Outbound notifications for order lifecycle events"
+
+spec:
+  type: service
+  language: typescript
+  path: ./src
+
+  constraints:
+    - id: no-direct-email-sdk
+      description: "Domain logic MUST NOT import email SDKs directly. All sending goes through infra/mailer.ts."
+      rule:
+        type: dependency
+        deny:
+          - nodemailer
+          - "@sendgrid/mail"
+          - resend
+      severity: strategic
+      rationale: "Direct SDK use in domain logic makes the service untestable and couples business logic to a specific email provider"
+
+    - id: no-console-log
+      description: "Source files MUST NOT use console.log"
+      rule:
+        type: pattern
+        must_not_match:
+          - pattern: "console\\.log"
+            message: "Use the platform logger"
+      severity: tactical
+
+  # No violations declared.
+  # notification.ts imports nodemailer directly — BLOCKING.

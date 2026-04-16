@@ -1,0 +1,11 @@
+{
+  "name": "small-auth",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "express": "^4.18.2",
+    "nodemailer": "^6.9.8",
+    "pg": "^8.11.3"
+  }
+}

@@ -1,0 +1,51 @@
+kind: Component
+apiVersion: folio/v1alpha1
+metadata:
+  name: small-auth
+  owner: auth-team
+  description: "User registration, login, and token management"
+
+spec:
+  type: service
+  language: typescript
+  path: ./src
+
+  constraints:
+    - id: no-direct-db
+      description: "Only infra/db.ts may import pg. Domain and API layers MUST use the shared abstraction."
+      rule:
+        type: dependency
+        deny:
+          - pg
+          - mysql2
+      severity: strategic
+      rationale: "Direct driver usage bypasses connection pooling, audit logging, and the error normalisation layer in infra/db.ts"
+
+    - id: api-no-infra
+      description: "The API layer MUST NOT import from infra/ directly. All infrastructure access goes through the domain layer."
+      rule:
+        type: module
+        deny_imports_from:
+          - "../infra"
+          - "../../infra"
+      severity: strategic
+      rationale: "API controllers that reach into infra bypass domain validation and make the service impossible to test without a real database"
+
+    - id: no-console-log
+      description: "Source files MUST NOT contain console.log"
+      rule:
+        type: pattern
+        must_not_match:
+          - pattern: "console\\.log"
+            message: "Use a structured logger"
+      severity: tactical
+
+  violations:
+    tactical:
+      - id: v-001
+        constraint: no-direct-db
+        adr: ADR-001
+        expires: "2026-10-01"
+        owner: dev@example.com
+        reason: "auth-service.ts predates infra/db.ts — migration tracked in ADR-001"
+        max_age_days: 240

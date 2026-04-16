@@ -1,0 +1,39 @@
+kind: ArchDecision
+apiVersion: folio/v1alpha1
+metadata:
+  name: ADR-001
+  created: "2026-02-10"
+
+spec:
+  title: "Temporary Direct pg Usage in auth-service During db.ts Migration"
+  status: active
+
+  component: small-auth
+  constraints:
+    - no-direct-db
+
+  decision: >
+    The auth-service domain layer is granted a temporary exception to the
+    no-direct-db constraint. Direct use of the pg Pool is permitted only in
+    src/domain/auth-service.ts during the ongoing migration to infra/db.ts.
+
+  rationale: >
+    The auth-service was written before infra/db.ts existed as a shared
+    abstraction. Migrating to withClient() requires refactoring the query
+    patterns in auth-service.ts to use callbacks rather than direct pool
+    access. This refactor is planned but not yet scheduled. The team agreed
+    to document this rather than leave it as silent debt.
+
+  consequences: >
+    auth-service.ts MUST be migrated to use infra/db.ts before expiry.
+    No new files in the domain layer may import pg directly — this exception
+    is scoped to auth-service.ts only. Any new domain logic requiring DB
+    access MUST use infra/db.ts from day one.
+
+  expires: "2026-10-01"
+  owner: dev@example.com
+  approver: tech-lead@example.com
+
+  tags:
+    - migration
+    - database
