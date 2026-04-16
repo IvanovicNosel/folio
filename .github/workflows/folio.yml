@@ -21,31 +21,34 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
 
-      - name: Install Folio
-        run: pnpm add -g @folio/cli
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-      # ── Schema validation (fast, fails early) ──────────────────────────────
+      - name: Build Folio
+        run: pnpm --filter @folio/core build && pnpm --filter @folio/cli build
+
+      # ── Schema validation ──────────────────────────────────────────────────
+      # Validates all folio.yaml and ArchDecision files in examples/
       - name: Validate Folio documents
-        run: folio validate .
-        # Exit code 2 = schema errors — always blocks
+        run: |
+          node packages/cli/dist/bin/folio.js validate examples/payment-service \
+            --decisions examples/payment-service/decisions
 
       # ── Full analysis — SARIF output for Code Scanning ────────────────────
-      - name: Run architectural analysis
+      - name: Run architectural analysis (SARIF)
         id: folio_check
         run: |
-          folio check . \
+          node packages/cli/dist/bin/folio.js check examples/payment-service \
             --format sarif \
-            --decisions ./decisions \
+            --decisions examples/payment-service/decisions \
             > folio-results.sarif
-        # Exit code 1 = strategic violations (blocking)
-        # Exit code 2 = config/schema error
         continue-on-error: true
 
       # ── Upload SARIF to GitHub Code Scanning ──────────────────────────────
@@ -56,15 +59,18 @@ jobs:
           sarif_file: folio-results.sarif
           category: folio-architectural-analysis
 
-      # ── Human-readable summary on PR ──────────────────────────────────────
+      # ── Human-readable summary ─────────────────────────────────────────────
       - name: Print analysis summary
         if: always()
-        run: folio check . --format table --decisions ./decisions || true
+        run: |
+          node packages/cli/dist/bin/folio.js check examples/payment-service \
+            --format table \
+            --decisions examples/payment-service/decisions || true
 
       # ── Fail the job if blocking violations were found ────────────────────
       - name: Assert no blocking violations
         if: steps.folio_check.outcome == 'failure'
         run: |
           echo "::error::Folio found blocking architectural violations."
-          echo "::error::Review the findings above and either resolve the violations or document them as tactical tolerances with a valid ArchDecision."
+          echo "::error::Review the findings and document exceptions with a valid ArchDecision."
           exit 1
