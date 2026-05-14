@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@folio/core": "workspace:*",
+    "@anthropic-ai/sdk": "^0.96.0",
     "commander": "^12.1.0",
     "picocolors": "^1.0.1",
     "js-yaml": "^4.1.0",
