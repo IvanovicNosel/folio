@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { resolve, join, dirname, basename } from 'node:path';
 import yaml from 'js-yaml';
 import type { ComponentManifest } from './types/component.js';
 import type { ArchDecision } from './types/archdecision.js';
@@ -26,12 +26,22 @@ const EXCLUDE_DIRS = new Set([
 ]);
 
 /**
- * Finds and loads all folio.yaml component manifests under a root directory.
+ * Finds and loads all folio component manifests under a root directory.
+ *
+ * It matches:
+ * 1. Files named 'folio.yaml'
+ * 2. Any .yaml/.yml files inside a directory named '.folio'
  */
 export function loadComponents(rootDir: string): ComponentManifest[] {
-  const files = findFiles(resolve(rootDir), 'folio.yaml', false);
+  // 1. Find standard folio.yaml files
+  const standardFiles = findFiles(resolve(rootDir), 'folio.yaml', false);
 
-  return files.map((filePath) => {
+  // 2. Find manifests inside .folio/ directories
+  const hiddenDirFiles = findFolioDirFiles(resolve(rootDir));
+
+  const allFiles = Array.from(new Set([...standardFiles, ...hiddenDirFiles]));
+
+  return allFiles.map((filePath) => {
     const raw = parseYaml(filePath);
     if (raw['kind'] !== 'Component') {
       throw new LoadError(
@@ -41,6 +51,7 @@ export function loadComponents(rootDir: string): ComponentManifest[] {
     }
     const manifest = raw as unknown as ComponentManifest;
     manifest._filePath = filePath;
+    manifest._rootDir = componentRootForManifest(filePath);
     return manifest;
   });
 }
@@ -74,6 +85,11 @@ export function loadArchDecisions(decisionsDir: string): ArchDecision[] {
   return adrs;
 }
 
+function componentRootForManifest(filePath: string): string {
+  const manifestDir = dirname(filePath);
+  return basename(manifestDir) === '.folio' ? dirname(manifestDir) : manifestDir;
+}
+
 function parseYaml(filePath: string): Record<string, unknown> {
   try {
     const content = readFileSync(filePath, 'utf-8');
@@ -86,6 +102,35 @@ function parseYaml(filePath: string): Record<string, unknown> {
     if (err instanceof LoadError) throw err;
     throw new LoadError(filePath, String(err));
   }
+}
+
+/**
+ * Special walk for .folio directories to collect manifests.
+ */
+function findFolioDirFiles(dir: string): string[] {
+  const results: string[] = [];
+
+  function walk(current: string): void {
+    let entries;
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (entry.name === '.folio') {
+          results.push(...findFiles(join(current, entry.name), '.yaml', true));
+        } else if (!EXCLUDE_DIRS.has(entry.name)) {
+          walk(join(current, entry.name));
+        }
+      }
+    }
+  }
+
+  walk(dir);
+  return results;
 }
 
 /**
@@ -112,7 +157,8 @@ function findFiles(dir: string, suffix: string, suffixOnly: boolean): string[] {
         }
       } else if (entry.isFile()) {
         const matches = suffixOnly
-          ? entry.name.endsWith(suffix)
+          ? entry.name.endsWith(suffix) ||
+            entry.name.endsWith(suffix.replace('.yaml', '.yml'))
           : entry.name === suffix;
         if (matches) {
           results.push(join(current, entry.name));

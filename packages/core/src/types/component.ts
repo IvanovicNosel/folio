@@ -129,6 +129,8 @@ export interface ComponentManifest {
   apiVersion: 'folio/v1alpha1';
   metadata: ComponentMetadata;
   spec: ComponentSpec;
-  /** Resolved file path — set by the loader, not part of the YAML */
+  /** Resolved file path - set by the loader, not part of the YAML */
   _filePath?: string;
+  /** Resolved component root - set by the loader, not part of the YAML */
+  _rootDir?: string;
 }

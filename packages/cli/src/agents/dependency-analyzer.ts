@@ -16,6 +16,8 @@ const IMPORT_PATTERNS = [
   /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
   // await import('pkg')  /  import('pkg')
   /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+  // Java import: import static com.example.Type.member; / import com.example.Type;
+  /\bimport\s+(?:static\s+)?([\w.*]+)\s*;/g,
 ];
 
 /**
@@ -35,14 +37,49 @@ function extractSpecifiers(content: string): string[] {
 
 /**
  * Returns the top-level package name from a bare (non-relative) specifier.
- * e.g. 'pg/native' → 'pg', '@scope/pkg/sub' → '@scope/pkg'
+ * For JS/TS: '@scope/pkg/sub' → '@scope/pkg', 'pkg/sub' → 'pkg'
+ * Java imports are intentionally returned whole so policy entries can match
+ * package prefixes such as 'com.company.module'.
  */
 function packageName(specifier: string): string {
   if (specifier.startsWith('@')) {
     const parts = specifier.split('/');
     return `${parts[0]}/${parts[1]}`;
   }
+  if (!specifier.includes('/')) {
+    return specifier;
+  }
   return specifier.split('/')[0]!;
+}
+
+function matchesSpecifier(specifier: string, pattern: string): boolean {
+  return (
+    specifier === pattern ||
+    specifier.startsWith(`${pattern}/`) ||
+    specifier.startsWith(`${pattern}.`)
+  );
+}
+
+function isModuleSpecifier(specifier: string, rule: ModuleRule): boolean {
+  if (specifier.startsWith('.') || specifier.startsWith('/')) return true;
+  const configured = [
+    ...(rule.deny_imports_from ?? []),
+    ...(rule.allow_imports_from ?? []),
+  ];
+  return configured.some((entry) => matchesModuleSpecifier(specifier, entry));
+}
+
+function matchesModuleSpecifier(specifier: string, pattern: string): boolean {
+  const normalizedSpecifier = normalizeModuleSpecifier(specifier);
+  const normalizedPattern = normalizeModuleSpecifier(pattern);
+  return (
+    normalizedSpecifier === normalizedPattern ||
+    normalizedSpecifier.startsWith(`${normalizedPattern}/`)
+  );
+}
+
+function normalizeModuleSpecifier(value: string): string {
+  return value.replace(/\.js$/, '').replace(/\./g, '/').replace(/\/+/g, '/');
 }
 
 /**
@@ -62,7 +99,7 @@ function findLine(lines: string[], needle: string): number {
 export function analyzeDependencies(component: ComponentManifest): Finding[] {
   if (!component._filePath) return [];
 
-  const componentDir = dirname(resolve(component._filePath));
+  const componentDir = component._rootDir ?? dirname(resolve(component._filePath));
   const sourcePath = resolve(componentDir, component.spec.path ?? '.');
   const sourceFiles = walkSourceFiles(sourcePath);
   const findings: Finding[] = [];
@@ -76,23 +113,25 @@ export function analyzeDependencies(component: ComponentManifest): Finding[] {
         const content = readFileSync(filePath, 'utf-8');
         const lines = content.split('\n');
         const specifiers = extractSpecifiers(content);
-        const packages = specifiers
-          .filter((s) => !s.startsWith('.') && !s.startsWith('/'))
-          .map(packageName);
 
         if (rule.deny) {
-          for (const pkg of packages) {
-            if (rule.deny.includes(pkg)) {
+          for (const specifier of specifiers) {
+            const pkg = packageName(specifier);
+            if (
+              rule.deny.some(
+                (d) => matchesSpecifier(specifier, d) || matchesSpecifier(pkg, d),
+              )
+            ) {
               findings.push(
                 makeFinding({
                   agent: 'dependency-analyzer',
                   component: component.metadata.name,
                   constraint: constraint.id,
                   file: filePath,
-                  line: findLine(lines, pkg),
+                  line: findLine(lines, specifier),
                   violation_type: 'constraint-violation',
-                  message: `Forbidden dependency '${pkg}' imported (rule: ${constraint.id})`,
-                  evidence: `import '${pkg}' in ${relative(componentDir, filePath)}`,
+                  message: `Forbidden dependency '${specifier}' imported (rule: ${constraint.id})`,
+                  evidence: `import '${specifier}' in ${relative(componentDir, filePath)}`,
                   confidence: 1.0,
                 }),
               );
@@ -101,8 +140,12 @@ export function analyzeDependencies(component: ComponentManifest): Finding[] {
         }
 
         if (rule.allow_only) {
+          const packages = specifiers
+            .filter((s) => !s.startsWith('.') && !s.startsWith('/'))
+            .map(packageName);
+
           for (const pkg of packages) {
-            if (!rule.allow_only.includes(pkg)) {
+            if (!rule.allow_only.some((allowed) => matchesSpecifier(pkg, allowed))) {
               findings.push(
                 makeFinding({
                   agent: 'dependency-analyzer',
@@ -130,21 +173,13 @@ export function analyzeDependencies(component: ComponentManifest): Finding[] {
         const content = readFileSync(filePath, 'utf-8');
         const lines = content.split('\n');
         const specifiers = extractSpecifiers(content);
-        const relativeSpecifiers = specifiers.filter(
-          (s) => s.startsWith('.') || s.startsWith('/'),
-        );
+
+        const internalSpecifiers = specifiers.filter((s) => isModuleSpecifier(s, rule));
 
         if (rule.deny_imports_from) {
-          for (const specifier of relativeSpecifiers) {
+          for (const specifier of internalSpecifiers) {
             for (const denied of rule.deny_imports_from) {
-              const normalised = denied.endsWith('/') ? denied : denied;
-              if (
-                specifier === normalised ||
-                specifier.startsWith(normalised + '/') ||
-                // also match without trailing .js extension differences
-                specifier.replace(/\.js$/, '') === normalised.replace(/\.js$/, '') ||
-                specifier.replace(/\.js$/, '').startsWith(normalised.replace(/\.js$/, '') + '/')
-              ) {
+              if (matchesModuleSpecifier(specifier, denied)) {
                 findings.push(
                   makeFinding({
                     agent: 'dependency-analyzer',
@@ -158,20 +193,16 @@ export function analyzeDependencies(component: ComponentManifest): Finding[] {
                     confidence: 1.0,
                   }),
                 );
-                break; // avoid duplicate findings for same specifier
+                break;
               }
             }
           }
         }
 
         if (rule.allow_imports_from) {
-          for (const specifier of relativeSpecifiers) {
-            const allowed = rule.allow_imports_from.some(
-              (a) =>
-                specifier === a ||
-                specifier.startsWith(a + '/') ||
-                specifier.replace(/\.js$/, '') === a.replace(/\.js$/, '') ||
-                specifier.replace(/\.js$/, '').startsWith(a.replace(/\.js$/, '') + '/'),
+          for (const specifier of internalSpecifiers) {
+            const allowed = rule.allow_imports_from.some((a) =>
+              matchesModuleSpecifier(specifier, a),
             );
             if (!allowed) {
               findings.push(
@@ -201,6 +232,7 @@ export function analyzeDependencies(component: ComponentManifest): Finding[] {
  * Resolves the absolute path of a component's source directory.
  */
 export function componentSourcePath(component: ComponentManifest): string {
-  const componentDir = dirname(resolve(component._filePath ?? 'folio.yaml'));
+  const componentDir =
+    component._rootDir ?? dirname(resolve(component._filePath ?? 'folio.yaml'));
   return join(componentDir, component.spec.path ?? '.');
 }

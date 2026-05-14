@@ -19,6 +19,7 @@ const SOURCE_EXTENSIONS = new Set([
   '.mjs',
   '.cjs',
   '.py',
+  '.java',
 ]);
 
 /**

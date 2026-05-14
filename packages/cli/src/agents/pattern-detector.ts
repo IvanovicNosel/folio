@@ -12,7 +12,7 @@ import { walkSourceFiles } from './source-walker.js';
 export function detectPatterns(component: ComponentManifest): Finding[] {
   if (!component._filePath) return [];
 
-  const componentDir = dirname(resolve(component._filePath));
+  const componentDir = component._rootDir ?? dirname(resolve(component._filePath));
   const sourcePath = resolve(componentDir, component.spec.path ?? '.');
   const sourceFiles = walkSourceFiles(sourcePath);
   const findings: Finding[] = [];
