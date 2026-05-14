@@ -1,0 +1,76 @@
+name: Folio — Architectural Intent Analysis
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  folio:
+    name: Architectural Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # Required for uploading SARIF results to GitHub Code Scanning
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Folio
+        run: pnpm --filter @folio/core build && pnpm --filter @folio/cli build
+
+      # ── Schema validation ──────────────────────────────────────────────────
+      # Validates all folio.yaml and ArchDecision files in examples/
+      - name: Validate Folio documents
+        run: |
+          node packages/cli/dist/bin/folio.js validate examples/payment-service \
+            --decisions examples/payment-service/decisions
+
+      # ── Full analysis — SARIF output for Code Scanning ────────────────────
+      - name: Run architectural analysis (SARIF)
+        id: folio_check
+        run: |
+          node packages/cli/dist/bin/folio.js check examples/payment-service \
+            --format sarif \
+            --decisions examples/payment-service/decisions \
+            > folio-results.sarif
+        continue-on-error: true
+
+      # ── Upload SARIF to GitHub Code Scanning ──────────────────────────────
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: folio-results.sarif
+          category: folio-architectural-analysis
+
+      # ── Human-readable summary ─────────────────────────────────────────────
+      - name: Print analysis summary
+        if: always()
+        run: |
+          node packages/cli/dist/bin/folio.js check examples/payment-service \
+            --format table \
+            --decisions examples/payment-service/decisions || true
+
+      # ── Fail the job if blocking violations were found ────────────────────
+      - name: Assert no blocking violations
+        if: steps.folio_check.outcome == 'failure'
+        run: |
+          echo "::error::Folio found blocking architectural violations."
+          echo "::error::Review the findings and document exceptions with a valid ArchDecision."
+          exit 1

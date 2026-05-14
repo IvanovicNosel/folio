@@ -1,0 +1,47 @@
+kind: ArchDecision
+apiVersion: folio/v1alpha1
+metadata:
+  name: ADR-042
+  created: "2026-03-01"
+  updated: "2026-03-15"
+
+spec:
+  title: "Temporary Direct Database Access During Repository Pattern Migration"
+  status: active
+
+  component: payment-service
+  constraints:
+    - no-direct-db
+
+  decision: >
+    The payment-service is granted a temporary exception to the no-direct-db
+    constraint for the duration of the repository pattern migration. Direct use
+    of the 'pg' driver is permitted only in the legacy-processor module.
+
+  rationale: >
+    The payment-service was originally written before the shared @company/db-client
+    package existed. The codebase contains 23 files with direct pg driver usage.
+    Migrating all 23 files in a single sprint introduces unacceptable regression
+    risk to a PCI-scoped service. The team will migrate incrementally, completing
+    the work by 2027-01-01.
+
+  consequences: >
+    The team MUST complete the migration to @company/db-client before 2027-01-01.
+    All new payment-service code MUST use @company/db-client. Direct 'pg' usage
+    MUST NOT be extended to any new module — only existing legacy-processor files
+    are covered by this exception. If the migration is not completed by the expiry
+    date, the violation will be automatically reclassified as strategic in all
+    subsequent Folio CI runs, blocking deployments.
+
+  expires: "2027-01-01"
+  owner: jane.doe@example.com
+  approver: tech-lead@example.com
+
+  tags:
+    - migration
+    - database
+    - pci-scope
+
+  links:
+    - https://github.com/example/payment-service/pull/341
+    - https://jira.example.com/browse/PAY-1092

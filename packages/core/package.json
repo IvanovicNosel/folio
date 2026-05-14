@@ -1,0 +1,32 @@
+{
+  "name": "@folio/core",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Folio core types, violation taxonomy, and analysis engine",
+  "author": "Ivanovic Nosel",
+  "license": "CC-BY-4.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "dependencies": {
+    "ajv": "^8.16.0",
+    "ajv-formats": "^3.0.1",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "typescript": "^5.4.5",
+    "@types/node": "^20.12.12"
+  }
+}

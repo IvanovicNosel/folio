@@ -14,18 +14,18 @@ The core idea: **architectural drift is not binary**. A developer who bypasses a
 
 ## Documents
 
-| Document | Description |
-|---|---|
-| [Position Paper](POSITION-PAPER.md) | Authorship record, prior art statement, original contributions |
-| DSL Grammar | *In development* |
-| Investigator Protocol | *In development* |
-| ArchDecision Schema | *In development* |
+| Document | Status | Description |
+|---|---|---|
+| [Position Paper](POSITION-PAPER.md) | Published | Authorship record, prior art statement, original contributions |
+| [DSL Grammar](DSL-GRAMMAR.md) | Draft v0.1 | Component Description Language — YAML syntax, constraints, violation tolerances |
+| [ArchDecision Schema](ARCHDECISION-SCHEMA.md) | Draft v0.1 | Decision Log Format — machine-readable ADRs with expiry semantics |
+| [Investigator Protocol](INVESTIGATOR-PROTOCOL.md) | Draft v0.1 | Validation Framework — multi-agent architecture, finding schema, CI output |
 
 ---
 
 ## Status
 
-`v0.1 — Position paper published. Formal specification in development.`
+`v0.1 — Position paper published. Formal specification drafts complete. Reference implementation in progress.`
 
 ---
 
