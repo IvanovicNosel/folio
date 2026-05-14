@@ -13,7 +13,7 @@
 
 The Folio Component Description Language (CDL) is a YAML-based grammar for declaring a software component's architectural identity, the constraints it is subject to, and the violations it is permitted to tolerate. It is the primary input to the Folio validation framework.
 
-A Folio component description file is named `folio.yaml` and is placed at the root of the component's source tree. A repository MAY contain multiple `folio.yaml` files, one per logical component.
+A Folio component description file is named `folio.yaml` and is placed at the root of the component's source tree. Alternatively, a component MAY be described by any `.yaml` or `.yml` file placed inside a hidden `.folio/` directory at the component's root. A repository MAY contain multiple `folio.yaml` files or `.folio/` directories, one per logical component.
 
 Conforming implementations MUST validate component description files against the normative JSON Schema published alongside this specification (`component.schema.json`).
 

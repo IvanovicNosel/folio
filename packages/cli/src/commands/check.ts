@@ -84,7 +84,8 @@ export async function runCheck(opts: CheckOptions): Promise<number> {
   const adrMap = new Map<string, ArchDecision>();
 
   for (const component of components) {
-    const componentDir = dirname(resolve(component._filePath ?? 'folio.yaml'));
+    const componentDir =
+      component._rootDir ?? dirname(resolve(component._filePath ?? 'folio.yaml'));
     const localDecisionsDir = join(componentDir, 'decisions');
     const localAdrs = loadArchDecisions(localDecisionsDir);
     for (const adr of localAdrs) {
