@@ -35,6 +35,7 @@ export const componentSchema = {
           enum: [
             'service', 'library', 'gateway', 'frontend',
             'worker', 'database', 'infrastructure',
+            'system', 'module', 'other',
           ],
         },
         language: {
@@ -45,6 +46,7 @@ export const componentSchema = {
           ],
         },
         path: { type: 'string', default: '.' },
+        exclude: { type: 'array', items: { type: 'string' }, default: [] },
         constraints: { type: 'array', items: { $ref: '#/$defs/constraint' } },
         violations: {
           type: 'object',

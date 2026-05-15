@@ -10,7 +10,10 @@ export type ComponentType =
   | 'frontend'
   | 'worker'
   | 'database'
-  | 'infrastructure';
+  | 'infrastructure'
+  | 'system'
+  | 'module'
+  | 'other';
 
 export type Language =
   | 'typescript'
@@ -120,6 +123,7 @@ export interface ComponentSpec {
   type: ComponentType;
   language: Language;
   path?: string;
+  exclude?: string[];
   constraints?: Constraint[];
   violations?: ViolationTolerances;
 }

@@ -13,6 +13,22 @@ const validateComponent: ValidateFunction = ajv.compile(componentSchema as objec
 const validateArchDecision: ValidateFunction = ajv.compile(archdecisionSchema as object);
 
 /**
+ * Builds a human-readable error message from an AJV error, listing allowed
+ * values for enum failures so users (and AI agents) don't have to read source.
+ */
+function buildErrorMessage(err: { instancePath: string; message?: string; keyword?: string; params?: unknown }): string {
+  const path = err.instancePath || '/';
+  if (err.keyword === 'enum' && err.params && typeof err.params === 'object') {
+    const params = err.params as { allowedValues?: unknown[] };
+    if (Array.isArray(params.allowedValues)) {
+      const allowed = params.allowedValues.map((v) => `'${v}'`).join(', ');
+      return `Schema error at ${path}: must be one of ${allowed}`;
+    }
+  }
+  return `Schema error at ${path}: ${err.message ?? 'unknown error'}`;
+}
+
+/**
  * Strips loader-injected internal fields (prefixed with _) before schema validation.
  */
 function stripInternals(obj: object): object {
@@ -38,7 +54,7 @@ export function validateComponentManifest(
       constraint: 'schema',
       file: manifest._filePath,
       violation_type: 'schema-error',
-      message: `Schema error at ${err.instancePath || '/'}: ${err.message ?? 'unknown error'}`,
+      message: buildErrorMessage(err),
       evidence: JSON.stringify(err.params),
       confidence: 1.0,
     }),
@@ -60,7 +76,7 @@ export function validateArchDecisionDocument(adr: ArchDecision): Finding[] {
       constraint: 'schema',
       file: adr._filePath,
       violation_type: 'schema-error',
-      message: `Schema error at ${err.instancePath || '/'}: ${err.message ?? 'unknown error'}`,
+      message: buildErrorMessage(err),
       evidence: JSON.stringify(err.params),
       confidence: 1.0,
     }),
