@@ -4,6 +4,7 @@ import { runValidate } from '../commands/validate.js';
 import { runCheck } from '../commands/check.js';
 import { runInit } from '../commands/init.js';
 import { runAdrList, runAdrStatus } from '../commands/adr.js';
+import { runInfer } from '../commands/infer.js';
 
 const VERSION = '0.1.0';
 
@@ -128,5 +129,27 @@ adr
     const code = await runAdrStatus({ decisions: options.decisions, name });
     process.exit(code);
   });
+
+// ── folio infer ───────────────────────────────────────────────────────────────
+program
+  .command('infer [path]')
+  .description('Infer a folio.yaml manifest from an existing codebase using Claude AI')
+  .option('-o, --output <file>', 'Write generated folio.yaml to this path (default: stdout)')
+  .option('-k, --api-key <key>', 'Anthropic API key (default: ANTHROPIC_API_KEY env var)')
+  .option('-q, --quiet', 'Suppress progress output')
+  .action(
+    async (
+      path: string | undefined,
+      options: { output?: string; apiKey?: string; quiet?: boolean },
+    ) => {
+      const code = await runInfer({
+        path: path ?? '.',
+        ...(options.output !== undefined ? { output: options.output } : {}),
+        ...(options.apiKey !== undefined ? { apiKey: options.apiKey } : {}),
+        ...(options.quiet !== undefined ? { quiet: options.quiet } : {}),
+      });
+      process.exit(code);
+    },
+  );
 
 program.parse();
