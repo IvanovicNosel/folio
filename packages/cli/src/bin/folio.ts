@@ -4,6 +4,7 @@ import { runValidate } from '../commands/validate.js';
 import { runCheck } from '../commands/check.js';
 import { runInit } from '../commands/init.js';
 import { runAdrList, runAdrStatus } from '../commands/adr.js';
+import { runDescribeSchema } from '../commands/describe-schema.js';
 
 const VERSION = '0.1.0';
 
@@ -126,6 +127,17 @@ adr
   .option('-d, --decisions <path>', 'Path to decisions directory', './decisions')
   .action(async (name: string, options: { decisions: string }) => {
     const code = await runAdrStatus({ decisions: options.decisions, name });
+    process.exit(code);
+  });
+
+// ── folio describe-schema ─────────────────────────────────────────────────────
+program
+  .command('describe-schema [schema]')
+  .description('Print the Folio manifest schema — human-readable by default, JSON Schema with --json')
+  .option('--json', 'Emit raw JSON Schema (machine-readable, suitable for agent context loading)')
+  .action(async (schema: string | undefined, options: { json?: boolean }) => {
+    const target = (schema ?? 'all') as 'component' | 'archdecision' | 'all';
+    const code = await runDescribeSchema({ json: options.json ?? false, schema: target });
     process.exit(code);
   });
 
