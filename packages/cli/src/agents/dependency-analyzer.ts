@@ -101,7 +101,7 @@ export function analyzeDependencies(component: ComponentManifest): Finding[] {
 
   const componentDir = component._rootDir ?? dirname(resolve(component._filePath));
   const sourcePath = resolve(componentDir, component.spec.path ?? '.');
-  const sourceFiles = walkSourceFiles(sourcePath);
+  const sourceFiles = walkSourceFiles(sourcePath, component.spec.exclude ?? []);
   const findings: Finding[] = [];
 
   for (const constraint of component.spec.constraints ?? []) {
