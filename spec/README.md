@@ -10,6 +10,8 @@ Folio is a specification for describing, validating, and governing software arch
 
 The core idea: **architectural drift is not binary**. A developer who bypasses a module boundary with a documented rationale and an expiry date is not the same as one who does so accidentally. Existing tools treat them identically. Folio does not.
 
+Direction: [RFC-001](rfc/RFC-001-ARCHITECTURE-DOSSIER.md) proposes extending Folio from a component-level specification into an **architecture dossier** — an index and policy layer over the architecture tooling an organisation already runs, with the drift taxonomy as its first tab. See [`spec/rfc/`](rfc/README.md).
+
 ---
 
 ## Documents
@@ -20,6 +22,7 @@ The core idea: **architectural drift is not binary**. A developer who bypasses a
 | [DSL Grammar](DSL-GRAMMAR.md) | Draft v0.1 | Component Description Language — YAML syntax, constraints, violation tolerances |
 | [ArchDecision Schema](ARCHDECISION-SCHEMA.md) | Draft v0.1 | Decision Log Format — machine-readable ADRs with expiry semantics |
 | [Investigator Protocol](INVESTIGATOR-PROTOCOL.md) | Draft v0.1 | Validation Framework — multi-agent architecture, finding schema, CI output |
+| [RFC-001: Architecture Dossier](rfc/RFC-001-ARCHITECTURE-DOSSIER.md) | RFC — Draft | Dossier framing, vocabulary alignment, sources/adapters, reversibility tab |
 
 ---
 
